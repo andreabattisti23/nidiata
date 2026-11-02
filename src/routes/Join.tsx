@@ -74,7 +74,7 @@ export function JoinPage() {
       >
         <label className="block">
           <span className="mb-1.5 block font-bold">Il tuo nome</span>
-          <input className="input" maxLength={18} required placeholder="Es. Viky" value={name} onChange={(e) => setName(e.target.value)} />
+          <input className="input" maxLength={18} required value={name} onChange={(e) => setName(e.target.value)} />
         </label>
         <div>
           <p className="mb-2 font-bold">Il tuo personaggio</p>

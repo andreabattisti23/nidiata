@@ -36,11 +36,11 @@ export function NewFamilyPage() {
       >
         <label className="block">
           <span className="mb-1.5 block font-bold">Nome della famiglia</span>
-          <input className="input" maxLength={28} placeholder="Es. Famiglia Cioccolatini" value={familyName} onChange={(e) => setFamilyName(e.target.value)} />
+          <input className="input" maxLength={28} value={familyName} onChange={(e) => setFamilyName(e.target.value)} />
         </label>
         <label className="block">
           <span className="mb-1.5 block font-bold">Il tuo nome</span>
-          <input className="input" maxLength={18} required placeholder="Come ti chiameranno i cuccioli?" value={name} onChange={(e) => setName(e.target.value)} />
+          <input className="input" maxLength={18} required value={name} onChange={(e) => setName(e.target.value)} />
         </label>
         <div>
           <p className="mb-2 font-bold">Il tuo personaggio</p>
