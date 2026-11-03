@@ -1,4 +1,5 @@
 import { Link, Outlet, createRootRoute, createRoute, createRouter } from '@tanstack/react-router'
+import { Intro } from './components/Intro'
 import { Toaster } from './lib/toast'
 import { DiaryPage } from './routes/Diary'
 import { EventsPage } from './routes/Events'
@@ -20,6 +21,7 @@ const rootRoute = createRootRoute({
     <>
       <Outlet />
       <Toaster />
+      <Intro />
     </>
   ),
   notFoundComponent: () => (
