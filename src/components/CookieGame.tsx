@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useT } from '../i18n'
 
 type Drop = { id: number; x: number; y: number; v: number; emoji: string; pts: number }
 
@@ -24,6 +25,7 @@ function pickDrop() {
 
 /** Minigioco: acchiappa i biscotti col cestino, evita i calzini puzzolenti. */
 export function CookieGame({ onFinish }: { onFinish: (score: number) => void }) {
+  const { t } = useT()
   const [phase, setPhase] = useState<'ready' | 'play' | 'done'>('ready')
   const [, force] = useState(0)
   const box = useRef<HTMLDivElement>(null)
@@ -125,17 +127,17 @@ export function CookieGame({ onFinish }: { onFinish: (score: number) => void }) 
             {phase === 'ready' ? (
               <>
                 <p className="text-5xl">🍪🧺</p>
-                <p className="mt-2 text-lg font-bold">Pioggia di biscotti!</p>
-                <p className="text-sm opacity-75">Muovi il cestino col dito (o con le frecce). Evita calzini 🧦 e peperoncini 🌶️!</p>
-                <button className="btn-primary mt-4" onClick={start}>Gioca!</button>
+                <p className="mt-2 text-lg font-bold">{t('cg.title')}</p>
+                <p className="text-sm opacity-75">{t('cg.help')}</p>
+                <button className="btn-primary mt-4" onClick={start}>{t('cg.play')}</button>
               </>
             ) : (
               <>
                 <p className="text-5xl">🎉</p>
-                <p className="mt-2 text-2xl font-bold">{score.current} biscotti!</p>
-                <p className="text-sm opacity-75">Valgono {Math.round(Math.min(80, score.current) * 1.5)} monete per la famiglia.</p>
+                <p className="mt-2 text-2xl font-bold">{t('cg.score', { n: score.current })}</p>
+                <p className="text-sm opacity-75">{t('cg.worth', { n: Math.round(Math.min(80, score.current) * 1.5) })}</p>
                 <div className="mt-4 flex justify-center gap-2">
-                  <button className="btn-primary" onClick={() => onFinish(score.current)}>Incassa 🪙</button>
+                  <button className="btn-primary" onClick={() => onFinish(score.current)}>{t('cg.cash')}</button>
                 </div>
               </>
             )}

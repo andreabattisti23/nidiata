@@ -1,5 +1,6 @@
 import { GameError, applyAction, createFamily, joinFamily, tick, touch } from '../game/engine'
-import type { Action, FamilyState, NewPlayer } from '../game/types'
+import type { Action, FamilyState, Msg, NewPlayer } from '../game/types'
+import { tr } from '../i18n'
 
 export class ApiError extends Error {
   constructor(message: string, public status: number) {
@@ -9,7 +10,7 @@ export class ApiError extends Error {
 
 export interface ActResponse {
   state: FamilyState
-  result?: { emoji: string; text: string; data?: string }
+  result?: { emoji: string; m: Msg[]; data?: string }
 }
 
 /**
@@ -33,13 +34,13 @@ async function call<T>(method: 'GET' | 'POST', path: string, body?: unknown): Pr
       if (ct.includes('application/json')) {
         const data = await res.json()
         mode = 'remote'
-        if (!res.ok) throw new ApiError(data.error ?? 'Errore', res.status)
+        if (!res.ok) throw new ApiError(tr(data.error ?? 'err.generic', data.params), res.status)
         return data as T
       }
-      if (mode === 'remote') throw new ApiError('Server non raggiungibile', res.status)
+      if (mode === 'remote') throw new ApiError(tr('err.server'), res.status)
     } catch (err) {
       if (err instanceof ApiError) throw err
-      if (mode === 'remote') throw new ApiError('Sei offline? Controlla la connessione', 0)
+      if (mode === 'remote') throw new ApiError(tr('err.offline'), 0)
     }
     mode = 'local'
     console.info('[Nidiata] API non trovata: modalità prova locale attiva')
@@ -52,7 +53,7 @@ async function call<T>(method: 'GET' | 'POST', path: string, body?: unknown): Pr
 const LS = 'nidiata:local:'
 const load = (id: string): FamilyState => {
   const raw = localStorage.getItem(LS + id)
-  if (!raw) throw new ApiError('Famiglia non trovata. Controlla il link!', 404)
+  if (!raw) throw new ApiError(tr('err.notFound'), 404)
   return JSON.parse(raw)
 }
 const save = (s: FamilyState) => localStorage.setItem(LS + s.id, JSON.stringify(s))
@@ -85,10 +86,10 @@ async function localCall<T>(method: string, path: string, body: any): Promise<T>
       return out as T
     }
   } catch (err) {
-    if (err instanceof GameError) throw new ApiError(err.message, 422)
+    if (err instanceof GameError) throw new ApiError(tr(err.key, err.params), 422)
     throw err
   }
-  throw new ApiError('Endpoint sconosciuto', 404)
+  throw new ApiError(tr('err.server'), 404)
 }
 
 // ---------------------------------------------------------------- API pubblica

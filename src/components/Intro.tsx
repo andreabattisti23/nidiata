@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react'
+import { tr } from '../i18n'
+import { LangScreen } from './LangPicker'
 
 const KEY = 'nidiata:intro-vista'
 const PARTS = ['/intro-mark.png', '/intro-vektor.png', '/intro-fiemme.png', '/intro-studio.png']
@@ -12,9 +14,12 @@ function alreadySeen() {
   }
 }
 
-/** Schermata iniziale con il logo dello studio. Si vede una volta per sessione e si salta toccando. */
+/**
+ * Schermata iniziale con il logo dello studio, seguita dalla scelta della lingua.
+ * Si vede una volta per sessione; l'animazione si salta toccando.
+ */
 export function Intro() {
-  const [phase, setPhase] = useState<'off' | 'loading' | 'play' | 'out'>(() => (alreadySeen() ? 'off' : 'loading'))
+  const [phase, setPhase] = useState<'off' | 'loading' | 'play' | 'out' | 'lang'>(() => (alreadySeen() ? 'off' : 'loading'))
 
   // aspetta che le immagini siano pronte (massimo 1,5 s) così l'animazione parte pulita
   useEffect(() => {
@@ -48,7 +53,7 @@ export function Intro() {
     } catch {
       /* niente */
     }
-    const t = setTimeout(() => setPhase('off'), 600)
+    const t = setTimeout(() => setPhase('lang'), 600)
     return () => clearTimeout(t)
   }, [phase])
 
@@ -61,7 +66,13 @@ export function Intro() {
 
   if (phase === 'off') return null
 
+  // la scelta lingua sta già sotto mentre il logo sfuma, così il passaggio è morbido
+  const lang = phase === 'out' || phase === 'lang' ? <LangScreen onDone={() => setPhase('off')} /> : null
+  if (phase === 'lang') return lang
+
   return (
+    <>
+    {lang}
     <div
       className={`intro fixed inset-0 z-[200] grid cursor-pointer place-items-center overflow-hidden bg-white ${phase === 'out' ? 'intro-out' : ''}`}
       onClick={() => phase === 'play' && setPhase('out')}
@@ -99,12 +110,13 @@ export function Intro() {
             <img src={PARTS[1]} alt="Vektor" className="intro-line block w-full" style={{ animationDelay: '0.95s' }} draggable={false} />
             <img src={PARTS[2]} alt="Fiemme" className="intro-line block w-full" style={{ animationDelay: '1.15s' }} draggable={false} />
             <img src={PARTS[3]} alt="Game Studio" className="intro-studio block w-full" draggable={false} />
-            <p className="intro-presents mt-6 text-sm font-semibold uppercase tracking-[0.35em] text-[#1b2a4a]/70">presenta</p>
+            <p className="intro-presents mt-6 text-sm font-semibold uppercase tracking-[0.35em] text-[#1b2a4a]/70">{tr('intro.presents')}</p>
           </div>
 
-          <p className="intro-hint absolute bottom-[max(env(safe-area-inset-bottom),20px)] text-xs font-semibold text-[#1b2a4a]/40">Tocca per saltare</p>
+          <p className="intro-hint absolute bottom-[max(env(safe-area-inset-bottom),20px)] text-xs font-semibold text-[#1b2a4a]/40">{tr('intro.skip')}</p>
         </>
       )}
     </div>
+    </>
   )
 }

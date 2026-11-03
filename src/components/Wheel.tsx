@@ -1,10 +1,12 @@
 import { useState } from 'react'
 import { WHEEL } from '../game/catalog'
+import { useT } from '../i18n'
 
 const COLORS = ['#ffc6d9', '#fff3a3', '#c3f2c0', '#a8e6f0', '#dcc3ff', '#ffd8a8', '#9fe3c9', '#ffb3c7']
 
 /** Ruota della fortuna: gira verso lo spicchio restituito dal server. */
 export function Wheel({ disabled, onSpin, label }: { disabled: boolean; onSpin: () => Promise<string | undefined>; label: string }) {
+  const { t, c } = useT()
   const [angle, setAngle] = useState(0)
   const [spinning, setSpinning] = useState(false)
   const n = WHEEL.length
@@ -50,7 +52,7 @@ export function Wheel({ disabled, onSpin, label }: { disabled: boolean; onSpin: 
                   fill="#2b2140"
                   transform={`rotate(${i * seg + seg / 2 - 90} ${Math.cos(mid) * 62} ${Math.sin(mid) * 62})`}
                 >
-                  {w.label}
+                  {c.wheel(w.id)}
                 </text>
               </g>
             )
@@ -59,7 +61,7 @@ export function Wheel({ disabled, onSpin, label }: { disabled: boolean; onSpin: 
         </svg>
       </div>
       <button className="btn-primary mt-3" disabled={disabled || spinning} onClick={spin}>
-        {spinning ? 'Gira gira...' : label}
+        {spinning ? t('mo.spinning') : label}
       </button>
     </div>
   )

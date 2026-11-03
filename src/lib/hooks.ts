@@ -4,6 +4,7 @@ import type { Action, FamilyState } from '../game/types'
 import { ApiError, api, type ActResponse } from './api'
 import { getPlayerId } from './identity'
 import { toast } from './toast'
+import { tr, useT } from '../i18n'
 
 export const familyKey = (id: string) => ['family', id] as const
 
@@ -21,16 +22,17 @@ export function useFamily(sessionId: string) {
 export function useAct(sessionId: string, opts?: { silent?: boolean; onResult?: (r: ActResponse) => void }) {
   const qc = useQueryClient()
   const playerId = getPlayerId(sessionId) ?? ''
+  const { msg } = useT()
   return useMutation({
     mutationFn: (action: Action) => api.act(sessionId, playerId, action),
     onSuccess: (res) => {
       qc.setQueryData<FamilyState>(familyKey(sessionId), (old) =>
         !old || res.state.version >= old.version ? res.state : old,
       )
-      if (res.result && !opts?.silent) toast(res.result.text, res.result.emoji, 'success')
+      if (res.result && !opts?.silent) toast(msg(res.result.m), res.result.emoji, 'success')
       opts?.onResult?.(res)
     },
-    onError: (err) => toast(err instanceof Error ? err.message : 'Ops, qualcosa è andato storto', '🙈', 'error'),
+    onError: (err) => toast(err instanceof Error ? err.message : tr('err.generic'), '🙈', 'error'),
   })
 }
 
@@ -53,13 +55,14 @@ export function fmtLeft(ms: number) {
   return `${Math.floor(m / 60)}h ${m % 60}m`
 }
 
+/** "5 min fa", "ieri"... nella lingua corrente. */
 export function timeAgo(at: number, now = Date.now()) {
   const s = Math.round((now - at) / 1000)
-  if (s < 45) return 'adesso'
+  if (s < 45) return tr('ago.now')
   const m = Math.round(s / 60)
-  if (m < 60) return `${m} min fa`
+  if (m < 60) return tr('ago.min', { n: m })
   const h = Math.round(m / 60)
-  if (h < 24) return `${h} h fa`
+  if (h < 24) return tr('ago.h', { n: h })
   const d = Math.round(h / 24)
-  return d === 1 ? 'ieri' : `${d} giorni fa`
+  return d === 1 ? tr('ago.yesterday') : tr('ago.days', { n: d })
 }

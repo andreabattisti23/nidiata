@@ -5,11 +5,13 @@ import { Avatar } from '../components/Avatar'
 import { LookPicker, randomLook } from '../components/LookPicker'
 import { Spinner } from '../components/ui'
 import type { Look } from '../game/types'
+import { useT } from '../i18n'
 import { api } from '../lib/api'
 import { getPlayerId, rememberFamily, setPlayerId } from '../lib/identity'
 import { toast } from '../lib/toast'
 
 export function JoinPage() {
+  const { t } = useT()
   const { sessionId } = useParams({ from: '/s/$sessionId/unisciti' })
   const navigate = useNavigate()
   const [name, setName] = useState('')
@@ -23,22 +25,22 @@ export function JoinPage() {
     onSuccess: ({ state, playerId }) => {
       setPlayerId(sessionId, playerId)
       rememberFamily(sessionId, state.familyName)
-      toast(`Benvenuto nella famiglia ${state.familyName}!`, '💞', 'success')
+      toast(t('join.welcome', { f: state.familyName }), '💞', 'success')
       navigate({ to: '/s/$sessionId', params: { sessionId } })
     },
     onError: (e) => toast(e.message, '🙈', 'error'),
   })
 
   if (existing && q.data?.parents.some((p) => p.id === existing)) return <Navigate to="/s/$sessionId" params={{ sessionId }} />
-  if (q.isPending) return <Spinner label="Bussiamo alla porta..." />
+  if (q.isPending) return <Spinner label={t('join.knocking')} />
   if (q.isError)
     return (
       <div className="grid min-h-dvh place-items-center p-6">
         <div className="card max-w-sm p-6 text-center">
           <p className="text-5xl">🚪</p>
-          <h1 className="mt-2 text-2xl font-bold">Nessuno in casa</h1>
+          <h1 className="mt-2 text-2xl font-bold">{t('join.noone')}</h1>
           <p className="mt-1 opacity-70">{q.error.message}</p>
-          <Link to="/" className="btn-primary mt-4">Torna alla home</Link>
+          <Link to="/" className="btn-primary mt-4">{t('nf.btn')}</Link>
         </div>
       </div>
     )
@@ -47,7 +49,7 @@ export function JoinPage() {
   return (
     <main className="mx-auto max-w-2xl px-4 py-8">
       <div className="card bg-pink p-5 text-center">
-        <p className="text-sm font-bold uppercase tracking-wide opacity-70">Sei stato invitato in</p>
+        <p className="text-sm font-bold uppercase tracking-wide opacity-70">{t('join.invitedTo')}</p>
         <h1 className="text-4xl font-bold">{s.familyName}</h1>
         <div className="mt-3 flex items-end justify-center gap-1">
           {s.parents.map((p) => (
@@ -63,7 +65,7 @@ export function JoinPage() {
             </div>
           ))}
         </div>
-        <p className="mt-2 text-sm">{s.parents[0]?.name} ti aspetta per crescere insieme {s.kids.length ? 'i cuccioli' : 'il primo cucciolo'}!</p>
+        <p className="mt-2 text-sm">{t(s.kids.length ? 'join.waitsKids' : 'join.waitsFirst', { p: s.parents[0]?.name ?? '' })}</p>
       </div>
       <form
         className="card mt-5 space-y-5 p-5"
@@ -73,15 +75,15 @@ export function JoinPage() {
         }}
       >
         <label className="block">
-          <span className="mb-1.5 block font-bold">Il tuo nome</span>
+          <span className="mb-1.5 block font-bold">{t('nfam.yourName')}</span>
           <input className="input" maxLength={18} required value={name} onChange={(e) => setName(e.target.value)} />
         </label>
         <div>
-          <p className="mb-2 font-bold">Il tuo personaggio</p>
+          <p className="mb-2 font-bold">{t('nfam.char')}</p>
           <LookPicker value={look} onChange={setLook} stage="adulto" outfit={{ top: 'maglia-base' }} />
         </div>
         <button className="btn-primary w-full text-lg" disabled={!name.trim() || join.isPending}>
-          {join.isPending ? 'Entro...' : 'Entra in famiglia 💞'}
+          {join.isPending ? t('join.entering') : t('join.enter')}
         </button>
       </form>
     </main>

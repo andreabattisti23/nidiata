@@ -16,6 +16,7 @@ Un tamagotchi da giocare in due: create una famiglia, mandate il link all'altra 
 - **Soldini**: lavori con timer, minigioco "Pioggia di biscotti", ruota della fortuna giornaliera.
 - **Bacheca** di bigliettini con sticker, **diario** di famiglia, **20 trofei**, notifiche quando l'altro fa qualcosa, giorno/notte nella stanza in base all'ora.
 - **Album** (`/album`) con tutti gli avatar, umori e vestiti.
+- **Intro animata** con il logo Vektor Fiemme Game Studio e **scelta della lingua**: italiano, inglese, spagnolo, tedesco. Ognuno gioca nella propria lingua, anche nella stessa famiglia; la lingua si cambia dalla home o dal profilo.
 
 ## Avvio in locale
 
@@ -47,8 +48,13 @@ src/game/        regole del gioco (condivise tra browser e server)
 netlify/functions/api.mts   API /api/sessions (stato salvato su Netlify Blobs)
 src/components/Avatar.tsx   avatar SVG componibili (specie, umori, vestiti)
 src/routes/      pagine (TanStack Router)
+src/i18n/        traduzioni: it.ts (riferimento), en.ts, es.ts, de.ts + content/ per eventi, vestiti, cibi, trofei
 ```
 
 Lo stato è calcolato sul server, così entrambi vedono la stessa famiglia. Il client aggiorna ogni 4 secondi con TanStack Query.
 
 Nota: chi ha il link può entrare in famiglia, quindi mandalo solo a chi vuoi tu.
+
+## Aggiungere o correggere una traduzione
+
+I testi dell'interfaccia sono in `src/i18n/<lingua>.ts`, quelli del gioco (imprevisti, vestiti, cibi...) in `src/i18n/content/<lingua>.ts`. L'italiano dei contenuti si legge direttamente da `src/game/`. Il server salva i messaggi del diario come chiavi (es. `care.bath`), quindi ogni giocatore li vede nella propria lingua.

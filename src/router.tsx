@@ -1,6 +1,7 @@
 import { Link, Outlet, createRootRoute, createRoute, createRouter } from '@tanstack/react-router'
 import { Intro } from './components/Intro'
 import { Toaster } from './lib/toast'
+import { useT } from './i18n'
 import { DiaryPage } from './routes/Diary'
 import { EventsPage } from './routes/Events'
 import { GalleryPage } from './routes/Gallery'
@@ -24,17 +25,22 @@ const rootRoute = createRootRoute({
       <Intro />
     </>
   ),
-  notFoundComponent: () => (
+  notFoundComponent: NotFound,
+})
+
+function NotFound() {
+  const { t } = useT()
+  return (
     <div className="grid min-h-dvh place-items-center p-6 text-center">
       <div className="card max-w-sm p-6">
         <p className="text-5xl">🥚</p>
-        <h1 className="mt-2 text-2xl font-bold">Pagina non trovata</h1>
-        <p className="mt-1 opacity-70">Questo uovo è ancora vuoto.</p>
-        <Link to="/" className="btn-primary mt-4">Torna alla home</Link>
+        <h1 className="mt-2 text-2xl font-bold">{t('nf.title')}</h1>
+        <p className="mt-1 opacity-70">{t('nf.text')}</p>
+        <Link to="/" className="btn-primary mt-4">{t('nf.btn')}</Link>
       </div>
     </div>
-  ),
-})
+  )
+}
 
 const homeRoute = createRoute({ getParentRoute: () => rootRoute, path: '/', component: HomePage })
 const newFamilyRoute = createRoute({ getParentRoute: () => rootRoute, path: '/nuova', component: NewFamilyPage })

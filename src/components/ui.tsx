@@ -1,9 +1,12 @@
 import { useEffect, type ReactNode } from 'react'
 import { STAT_INFO } from '../game/catalog'
 import type { StatKey } from '../game/types'
+import { tr, useT } from '../i18n'
 
 export function StatBar({ stat, value, compact = false }: { stat: StatKey; value: number; compact?: boolean }) {
+  const { c } = useT()
   const info = STAT_INFO[stat]
+  const name = c.stat(stat)
   const v = Math.round(value)
   const low = v < 25
   return (
@@ -11,12 +14,12 @@ export function StatBar({ stat, value, compact = false }: { stat: StatKey; value
       {!compact && (
         <div className="flex items-center justify-between text-sm font-semibold">
           <span>
-            {info.emoji} {info.name}
+            {info.emoji} {name}
           </span>
           <span className={low ? 'text-red-600' : 'opacity-70'}>{v}%</span>
         </div>
       )}
-      <div className={`overflow-hidden rounded-full border-2 border-ink bg-white ${compact ? 'h-2.5' : 'h-4'} ${low ? 'badge-pulse' : ''}`} title={`${info.name}: ${v}%`}>
+      <div className={`overflow-hidden rounded-full border-2 border-ink bg-white ${compact ? 'h-2.5' : 'h-4'} ${low ? 'badge-pulse' : ''}`} title={`${name}: ${v}%`}>
         <div className="h-full rounded-full transition-[width] duration-700" style={{ width: `${v}%`, background: low ? '#ff6b6b' : info.color }} />
       </div>
     </div>
@@ -36,7 +39,7 @@ export function Modal({ open, onClose, title, children, wide = false }: { open: 
       <div className={`card pop-in max-h-[88dvh] w-full overflow-y-auto p-5 ${wide ? 'max-w-2xl' : 'max-w-md'}`} onClick={(e) => e.stopPropagation()}>
         <div className="mb-3 flex items-start justify-between gap-3">
           {title && <h2 className="text-xl font-bold">{title}</h2>}
-          <button className="ml-auto grid h-9 w-9 place-items-center rounded-full border-2 border-ink bg-white text-lg font-bold" onClick={onClose} aria-label="Chiudi">
+          <button className="ml-auto grid h-9 w-9 place-items-center rounded-full border-2 border-ink bg-white text-lg font-bold" onClick={onClose} aria-label={tr('common.close')}>
             ×
           </button>
         </div>
@@ -67,12 +70,12 @@ export function Section({ title, right, children, className = '' }: { title: Rea
   )
 }
 
-export function Spinner({ label = 'Caricamento...' }: { label?: string }) {
+export function Spinner({ label }: { label?: string }) {
   return (
     <div className="grid min-h-[60dvh] place-items-center">
       <div className="text-center">
         <div className="mx-auto mb-3 text-5xl av-bob">🐣</div>
-        <p className="font-semibold opacity-70">{label}</p>
+        <p className="font-semibold opacity-70">{label ?? tr('common.loading')}</p>
       </div>
     </div>
   )

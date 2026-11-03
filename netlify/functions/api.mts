@@ -13,7 +13,8 @@ const json = (data: unknown, status = 200) =>
     headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
   })
 
-const fail = (message: string, status = 400) => json({ error: message }, status)
+// Gli errori viaggiano come chiavi del dizionario (err.*): li traduce il browser.
+const fail = (key: string, status = 400, params?: Record<string, string | number>) => json({ error: key, params }, status)
 
 class HttpError extends Error {
   constructor(public status: number, message: string) {
@@ -23,11 +24,11 @@ class HttpError extends Error {
 
 async function readBody<T>(req: Request): Promise<T> {
   const text = await req.text()
-  if (text.length > 8000) throw new HttpError(413, 'Richiesta troppo grande')
+  if (text.length > 8000) throw new HttpError(413, 'err.server')
   try {
     return JSON.parse(text || '{}') as T
   } catch {
-    throw new HttpError(400, 'JSON non valido')
+    throw new HttpError(400, 'err.server')
   }
 }
 
@@ -53,7 +54,7 @@ async function updateUnlocked<R extends { state: FamilyState }>(
   const st = store()
   for (let attempt = 0; attempt < 6; attempt++) {
     const cur = await st.getWithMetadata(key(id), { type: 'json' })
-    if (!cur) throw new HttpError(404, 'Famiglia non trovata. Controlla il link!')
+    if (!cur) throw new HttpError(404, 'err.notFound')
     const out = fn(cur.data as FamilyState)
     if (out.changed === false) return out
     const res = cur.etag
@@ -62,7 +63,7 @@ async function updateUnlocked<R extends { state: FamilyState }>(
     if (res.modified !== false) return out
     await new Promise((r) => setTimeout(r, 40 + Math.random() * 120))
   }
-  throw new HttpError(409, 'Troppe modifiche nello stesso momento, riprova!')
+  throw new HttpError(409, 'err.busy')
 }
 
 export default async (req: Request) => {
@@ -71,7 +72,7 @@ export default async (req: Request) => {
 
   try {
     // POST /api/sessions -> nuova famiglia
-    if (parts[0] !== 'sessions') return fail('Endpoint sconosciuto', 404)
+    if (parts[0] !== 'sessions') return fail('err.server', 404)
 
     if (parts.length === 1 && req.method === 'POST') {
       const body = await readBody<{ familyName: string; player: NewPlayer }>(req)
@@ -81,7 +82,7 @@ export default async (req: Request) => {
     }
 
     const id = parts[1]
-    if (!id || !/^[a-z0-9]{6,16}$/.test(id)) return fail('Codice famiglia non valido', 400)
+    if (!id || !/^[a-z0-9]{6,16}$/.test(id)) return fail('err.notFound', 404)
 
     // GET /api/sessions/:id?p=playerId
     if (parts.length === 2 && req.method === 'GET') {
@@ -111,17 +112,17 @@ export default async (req: Request) => {
     // POST /api/sessions/:id/action
     if (parts[2] === 'action' && req.method === 'POST') {
       const body = await readBody<{ playerId: string; action: Action }>(req)
-      if (!body.playerId || !body.action?.type) return fail('Richiesta incompleta')
+      if (!body.playerId || !body.action?.type) return fail('err.server')
       const out = await update(id, (s) => applyAction(s, body.playerId, body.action, Date.now(), rng))
       return json(out)
     }
 
-    return fail('Endpoint sconosciuto', 404)
+    return fail('err.server', 404)
   } catch (err) {
-    if (err instanceof GameError) return fail(err.message, 422)
+    if (err instanceof GameError) return fail(err.key, 422, err.params)
     if (err instanceof HttpError) return fail(err.message, err.status)
     console.error(err)
-    return fail('Errore del server, riprova tra poco', 500)
+    return fail('err.server', 500)
   }
 }
 

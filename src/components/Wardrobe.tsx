@@ -2,17 +2,19 @@ import { Link } from '@tanstack/react-router'
 import { useState } from 'react'
 import { ITEMS, itemById } from '../game/catalog'
 import type { Outfit, Slot, Target } from '../game/types'
+import { useT } from '../i18n'
 import { useAct } from '../lib/hooks'
 import { useSession } from '../lib/session'
 
-const SLOTS: { id: Slot; name: string; emoji: string }[] = [
-  { id: 'top', name: 'Vestiti', emoji: '👕' },
-  { id: 'hat', name: 'Cappelli', emoji: '🎩' },
-  { id: 'acc', name: 'Accessori', emoji: '🕶️' },
+const SLOTS: { id: Slot; key: 'wd.top' | 'wd.hat' | 'wd.acc'; emoji: string }[] = [
+  { id: 'top', key: 'wd.top', emoji: '👕' },
+  { id: 'hat', key: 'wd.hat', emoji: '🎩' },
+  { id: 'acc', key: 'wd.acc', emoji: '🕶️' },
 ]
 
 export function Wardrobe({ target, outfit }: { target: Target; outfit: Outfit }) {
   const { state, sessionId } = useSession()
+  const { t, c } = useT()
   const act = useAct(sessionId, { silent: true })
   const [slot, setSlot] = useState<Slot>('top')
   const owned = ITEMS.filter((i) => i.slot === slot && state.inventory.includes(i.id))
@@ -20,10 +22,10 @@ export function Wardrobe({ target, outfit }: { target: Target; outfit: Outfit })
 
   return (
     <div>
-      <div className="mb-3 flex gap-1.5">
+      <div className="mb-3 flex flex-wrap gap-1.5">
         {SLOTS.map((s) => (
           <button key={s.id} className={`chip px-3 py-1 text-sm ${slot === s.id ? 'bg-lilac' : ''}`} onClick={() => setSlot(s.id)}>
-            {s.emoji} {s.name}
+            {s.emoji} {t(s.key)}
           </button>
         ))}
       </div>
@@ -34,7 +36,7 @@ export function Wardrobe({ target, outfit }: { target: Target; outfit: Outfit })
           disabled={act.isPending}
         >
           <span className="block text-2xl">🚫</span>
-          Niente
+          {t('wd.none')}
         </button>
         {owned.map((i) => (
           <button
@@ -44,15 +46,15 @@ export function Wardrobe({ target, outfit }: { target: Target; outfit: Outfit })
             disabled={act.isPending}
           >
             <span className="block text-2xl">{i.emoji}</span>
-            {i.name}
+            {c.item(i.id)}
           </button>
         ))}
         <Link to="/s/$sessionId/negozio" params={{ sessionId }} className="grid place-items-center rounded-2xl border-2 border-dashed border-ink/50 p-2 text-center text-xs font-semibold opacity-80 hover:opacity-100">
           <span className="block text-2xl">🛍️</span>
-          Compra altro
+          {t('wd.buyMore')}
         </Link>
       </div>
-      {current && <p className="mt-2 text-xs opacity-60">Indossa: {itemById(current)?.name}</p>}
+      {current && itemById(current) && <p className="mt-2 text-xs opacity-60">{t('wd.wearing', { i: c.item(current) })}</p>}
     </div>
   )
 }

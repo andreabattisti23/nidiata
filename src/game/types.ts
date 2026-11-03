@@ -46,13 +46,23 @@ export interface PendingEvent {
   votes: Record<string, string>
 }
 
+/** Messaggio traducibile: chiave del dizionario + parametri. */
+export type MsgParams = Record<string, string | number>
+export interface Msg {
+  k: string
+  p?: MsgParams
+}
+
 export interface LogEntry {
   id: string
   at: number
   who?: string
   kidId?: string
   emoji: string
-  text: string
+  /** messaggio traducibile (nuovo formato) */
+  m?: Msg[]
+  /** testo già scritto in italiano (vecchi salvataggi) */
+  text?: string
 }
 
 export interface Note {
@@ -81,7 +91,7 @@ export interface FamilyState {
   counters: Record<string, number>
   nextEventAt: number
   cooldowns: Record<string, number>
-  lastResult?: { at: number; text: string; emoji: string }
+  lastResult?: { at: number; emoji: string; m?: Msg[]; text?: string }
 }
 
 export type CareKind = 'feed' | 'play' | 'bath' | 'sleep' | 'wake' | 'medicine' | 'study' | 'cuddle' | 'sing'

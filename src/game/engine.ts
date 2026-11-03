@@ -4,22 +4,28 @@ import {
 } from './catalog'
 import { EVENTS, eventById, type Effects, type EventTemplate, type Outcome } from './events'
 import type {
-  Action, CareKind, FamilyState, Kid, LogEntry, Mood, NewPlayer, Parent, PendingEvent, Stage, StatKey, Stats,
+  Action, CareKind, FamilyState, Kid, LogEntry, Mood, Msg, MsgParams, NewPlayer, Parent, PendingEvent, Stage, StatKey, Stats,
 } from './types'
 
 export type Rng = () => number
 
+/** Errore di gioco: `key` è una chiave del dizionario ("err.*"), tradotta dal client. */
 export class GameError extends Error {
-  constructor(message: string) {
-    super(message)
+  constructor(public key: string, public params?: MsgParams) {
+    super(key)
     this.name = 'GameError'
   }
 }
 
+const msg = (k: string, p?: MsgParams): Msg => (p ? { k, p } : { k })
+
 export interface ActionResult {
   state: FamilyState
-  result?: { emoji: string; text: string; data?: string }
+  result?: { emoji: string; m: Msg[]; data?: string }
 }
+
+/** Liste da cui il motore pesca a caso: il client mostra la voce tradotta con lo stesso indice. */
+export const LIST_SIZE = { game: 7, subj: 7, song: 5 }
 
 const MIN = 60_000
 const HOUR = 60 * MIN
@@ -87,19 +93,14 @@ export function moodOf(kid: Kid): Mood {
   return 'ok'
 }
 
-export const MOOD_LABEL: Record<Mood, string> = {
-  felice: 'Felicissimo', ok: 'Tranquillo', triste: 'Giù di morale', dorme: 'Sta dormendo',
-  malato: 'Non sta bene', affamato: 'Ha fame!', sporco: 'Ha bisogno di un bagnetto', stanco: 'Stanchissimo',
-}
-
 export function cooldownLeft(map: Record<string, number>, key: string, now: number) {
   return Math.max(0, (map[key] ?? 0) - now)
 }
 
 function validLook(p: { species: string; color: string; pattern: string }) {
-  if (!SPECIES.some((s) => s.id === p.species)) throw new GameError('Specie non valida')
-  if (!COLORS.includes(p.color)) throw new GameError('Colore non valido')
-  if (!PATTERNS.some((x) => x.id === p.pattern)) throw new GameError('Motivo non valido')
+  if (!SPECIES.some((s) => s.id === p.species)) throw new GameError('err.look')
+  if (!COLORS.includes(p.color)) throw new GameError('err.look')
+  if (!PATTERNS.some((x) => x.id === p.pattern)) throw new GameError('err.look')
 }
 
 function addLog(s: FamilyState, entry: Omit<LogEntry, 'id'>, rng: Rng) {
@@ -124,20 +125,20 @@ function addXp(s: FamilyState, kid: Kid, xp: number, now: number, rng: Rng) {
     kid.stage = after
     const info = STAGES.find((x) => x.id === after)!
     s.coins += 40
-    addLog(s, { at: now, kidId: kid.id, emoji: info.emoji, text: `${kid.name} è cresciuto: ora è ${info.name.toLowerCase()}! Regalo dei nonni: 40 monete.` }, rng)
+    addLog(s, { at: now, kidId: kid.id, emoji: info.emoji, m: [msg('log.grew', { kid: kid.name, stage: after })] }, rng)
   }
 }
 
-function giveItem(s: FamilyState, itemId: string, now: number, rng: Rng) {
+function giveItem(s: FamilyState, itemId: string, now: number, rng: Rng): Msg[] {
   const item = itemById(itemId)
-  if (!item) return ''
+  if (!item) return []
   if (s.inventory.includes(itemId)) {
     s.coins += 20
-    return ` (${item.name} ce l'avevate già: rivenduto per 20 🪙)`
+    return [msg('log.itemDup', { item: itemId })]
   }
   s.inventory.push(itemId)
-  addLog(s, { at: now, emoji: item.emoji, text: `Nuovo capo nel guardaroba: ${item.name}!` }, rng)
-  return ` Nuovo capo: ${item.emoji} ${item.name}!`
+  addLog(s, { at: now, emoji: item.emoji, m: [msg('log.itemNewLog', { item: itemId })] }, rng)
+  return [msg('log.itemNew', { item: itemId })]
 }
 
 function checkAchievements(s: FamilyState, now: number, rng: Rng) {
@@ -146,18 +147,18 @@ function checkAchievements(s: FamilyState, now: number, rng: Rng) {
     if (a.check(s)) {
       s.achievements[a.id] = now
       s.coins += a.reward
-      addLog(s, { at: now, emoji: '🏆', text: `Trofeo sbloccato: ${a.emoji} ${a.name} (+${a.reward} 🪙)` }, rng)
+      addLog(s, { at: now, emoji: '🏆', m: [msg('log.trophy', { ach: a.id, n: a.reward })] }, rng)
     }
   }
 }
 
-const parentName = (s: FamilyState, id: string) => s.parents.find((p) => p.id === id)?.name ?? 'Qualcuno'
+const parentName = (s: FamilyState, id: string) => s.parents.find((p) => p.id === id)?.name ?? '?'
 
 // ------------------------------------------------------------------ creazione
 
 export function makeParent(p: NewPlayer, now: number, rng: Rng): Parent {
   const name = cleanText(p.name, 18)
-  if (!name) throw new GameError('Scrivi il tuo nome')
+  if (!name) throw new GameError('err.yourName')
   validLook(p)
   return {
     id: uid(12, rng), name, species: p.species, color: p.color, pattern: p.pattern,
@@ -166,7 +167,7 @@ export function makeParent(p: NewPlayer, now: number, rng: Rng): Parent {
 }
 
 export function createFamily(familyName: string, player: NewPlayer, now: number, rng: Rng) {
-  const name = cleanText(familyName, 28) || 'La nostra famiglia'
+  const name = cleanText(familyName, 28) || 'Nidiata'
   const parent = makeParent(player, now, rng)
   const state: FamilyState = {
     id: uid(10, rng), version: 1, familyName: name, createdAt: now, lastTick: now,
@@ -174,16 +175,16 @@ export function createFamily(familyName: string, player: NewPlayer, now: number,
     events: [], log: [], notes: [], achievements: {}, counters: {},
     nextEventAt: now + 3 * MIN, cooldowns: {},
   }
-  addLog(state, { at: now, who: parent.id, emoji: '🏡', text: `${parent.name} ha fondato la famiglia "${name}".` }, rng)
+  addLog(state, { at: now, who: parent.id, emoji: '🏡', m: [msg('log.founded', { p: parent.name, f: name })] }, rng)
   return { state, playerId: parent.id }
 }
 
 export function joinFamily(prev: FamilyState, player: NewPlayer, now: number, rng: Rng) {
   const s = structuredClone(prev)
-  if (s.parents.length >= MAX_PARENTS) throw new GameError('Questa famiglia è già al completo')
+  if (s.parents.length >= MAX_PARENTS) throw new GameError('err.familyFull')
   const parent = makeParent(player, now, rng)
   s.parents.push(parent)
-  addLog(s, { at: now, who: parent.id, emoji: '💞', text: `${parent.name} si è unito alla famiglia!` }, rng)
+  addLog(s, { at: now, who: parent.id, emoji: '💞', m: [msg('log.joined', { p: parent.name })] }, rng)
   checkAchievements(s, now, rng)
   s.version++
   return { state: s, playerId: parent.id }
@@ -216,7 +217,7 @@ function decayKid(s: FamilyState, kid: Kid, f: number, now: number, rng: Rng) {
     st.igiene = clamp(st.igiene - 1.5 * f)
     if (st.energia >= 100) {
       kid.asleep = false
-      addLog(s, { at: now, kidId: kid.id, emoji: '🌅', text: `${kid.name} si è svegliato riposatissimo.` }, rng)
+      addLog(s, { at: now, kidId: kid.id, emoji: '🌅', m: [msg('log.wokeUp', { kid: kid.name })] }, rng)
     }
   } else {
     st.fame = clamp(st.fame - 7 * f * baby * (t('goloso') ? 1.3 : 1))
@@ -236,7 +237,7 @@ function decayKid(s: FamilyState, kid: Kid, f: number, now: number, rng: Rng) {
   st.salute = clamp(st.salute + dh * f)
   if (!kid.sick && st.salute < 35 && rng() < 0.3 * f * (t('robusto') ? 0.35 : 1)) {
     kid.sick = true
-    addLog(s, { at: now, kidId: kid.id, emoji: '🤧', text: `${kid.name} si è preso un raffreddore. Serve una medicina!` }, rng)
+    addLog(s, { at: now, kidId: kid.id, emoji: '🤧', m: [msg('log.cold', { kid: kid.name })] }, rng)
   }
   const avg = (st.fame + st.energia + st.igiene + st.felicita + st.salute) / 5
   if (avg >= 60 && !kid.sick) addXp(s, kid, 3 * f, now, rng)
@@ -261,7 +262,7 @@ function spawnEvent(s: FamilyState, now: number, rng: Rng): PendingEvent | undef
   s.events.push(ev)
   s.cooldowns['ev:' + tpl.id] = now
   const kidName = s.kids.find((k) => k.id === kidId)?.name
-  addLog(s, { at: now, kidId, emoji: tpl.emoji, text: `Imprevisto: ${tpl.title}${kidName ? ` (${kidName})` : ''}. Decidete insieme!` }, rng)
+  addLog(s, { at: now, kidId, emoji: tpl.emoji, m: [kidName ? msg('log.evNewKid', { ev: tpl.id, kid: kidName }) : msg('log.evNew', { ev: tpl.id })] }, rng)
   return ev
 }
 
@@ -287,7 +288,7 @@ export function tick(prev: FamilyState, now: number, rng: Rng): FamilyState {
     else if (age > EVENT_EXPIRE) {
       s.events = s.events.filter((e) => e.id !== ev.id)
       const tpl = eventById(ev.templateId)
-      addLog(s, { at: now, emoji: '💨', text: `L'imprevisto "${tpl?.title}" si è risolto da solo, senza di voi.` }, rng)
+      if (tpl) addLog(s, { at: now, emoji: '💨', m: [msg('log.evExpired', { ev: tpl.id })] }, rng)
       s.harmony = clamp(s.harmony - 2)
     }
   }
@@ -302,13 +303,9 @@ export function tick(prev: FamilyState, now: number, rng: Rng): FamilyState {
 
 // ------------------------------------------------------------------ eventi
 
-function fill(text: string, kid?: Kid) {
-  return text.replaceAll('{kid}', kid?.name ?? 'il piccolo')
-}
-
-function applyOutcome(s: FamilyState, kid: Kid | undefined, o: Outcome, now: number, rng: Rng) {
+function applyOutcome(s: FamilyState, kid: Kid | undefined, o: Outcome, now: number, rng: Rng): Msg[] {
   const e: Effects = o
-  let extra = ''
+  const extra: Msg[] = []
   if (kid && e.stats) addStats(kid, e.stats)
   if (e.allKids) for (const k of s.kids) addStats(k, e.allKids)
   if (kid && e.smarts) kid.smarts = clamp(kid.smarts + e.smarts)
@@ -318,12 +315,12 @@ function applyOutcome(s: FamilyState, kid: Kid | undefined, o: Outcome, now: num
   if (kid && e.heal) kid.sick = false
   if (kid && e.trait && !kid.traits.includes(e.trait) && kid.traits.length < 4) {
     kid.traits.push(e.trait)
-    extra += ` ${kid.name} ora è ${TRAITS[e.trait].name.toLowerCase()} ${TRAITS[e.trait].emoji}`
+    extra.push(msg('log.traitGot', { kid: kid.name, trait: e.trait }))
   }
-  if (e.item) extra += giveItem(s, e.item, now, rng)
+  if (e.item) extra.push(...giveItem(s, e.item, now, rng))
   if (kid) addXp(s, kid, e.xp ?? 10, now, rng)
   else for (const k of s.kids) addXp(s, k, 8, now, rng)
-  return fill(o.text, kid) + extra
+  return extra
 }
 
 function resolveEvent(s: FamilyState, ev: PendingEvent, now: number, rng: Rng, auto = false) {
@@ -332,29 +329,35 @@ function resolveEvent(s: FamilyState, ev: PendingEvent, now: number, rng: Rng, a
   if (!tpl) return undefined
   const voters = Object.keys(ev.votes)
   const choices = [...new Set(Object.values(ev.votes))]
-  let prefix = ''
+  const prefix: Msg[] = []
   let optionId = choices[0]
   if (choices.length > 1) {
     const winner = pick(voters, rng)
     optionId = ev.votes[winner]
-    prefix = `Non eravate d'accordo, ha deciso la monetina 🪙: vince la scelta di ${parentName(s, winner)}. `
+    prefix.push(msg('log.coinFlip', { p: parentName(s, winner) }))
     s.harmony = clamp(s.harmony - 3)
   } else if (voters.length > 1) {
-    prefix = 'Tutti d\'accordo! 🤝 '
+    prefix.push(msg('log.agree'))
     s.harmony = clamp(s.harmony + 2)
     bump(s, 'agree')
   } else if (auto && s.parents.length > 1) {
-    prefix = `Nessuna risposta dal partner, ha deciso ${parentName(s, voters[0])}. `
+    prefix.push(msg('log.noAnswer', { p: parentName(s, voters[0]) }))
   }
   const opt = tpl.options.find((o) => o.id === optionId) ?? tpl.options[0]
   const kid = s.kids.find((k) => k.id === ev.kidId)
   let outcome = opt.outcome
-  if (opt.chance) outcome = rng() < opt.chance.p ? opt.chance.success : opt.chance.fail
-  const text = prefix + applyOutcome(s, kid, outcome!, now, rng)
+  let r: 'o' | 's' | 'f' = 'o'
+  if (opt.chance) {
+    const ok = rng() < opt.chance.p
+    outcome = ok ? opt.chance.success : opt.chance.fail
+    r = ok ? 's' : 'f'
+  }
+  const extra = applyOutcome(s, kid, outcome!, now, rng)
+  const m = [...prefix, msg('out', { ev: tpl.id, opt: opt.id, r, kid: kid?.name ?? '' }), ...extra]
   bump(s, 'events')
-  addLog(s, { at: now, kidId: kid?.id, emoji: opt.emoji, text: `${tpl.title} → ${opt.label}. ${text}` }, rng)
-  s.lastResult = { at: now, emoji: opt.emoji, text }
-  return { emoji: opt.emoji, text }
+  addLog(s, { at: now, kidId: kid?.id, emoji: opt.emoji, m: [msg('log.evDone', { ev: tpl.id, opt: opt.id }), ...m] }, rng)
+  s.lastResult = { at: now, emoji: opt.emoji, m }
+  return { emoji: opt.emoji, m }
 }
 
 // ------------------------------------------------------------------ azioni
@@ -363,26 +366,26 @@ export function applyAction(prev: FamilyState, playerId: string, action: Action,
   const ticked = tick(prev, now, rng)
   const s = ticked === prev ? structuredClone(prev) : ticked
   const me = s.parents.find((p) => p.id === playerId)
-  if (!me) throw new GameError('Non fai parte di questa famiglia')
+  if (!me) throw new GameError('err.notMember')
   me.lastSeen = now
   const who = me.id
   let result: ActionResult['result']
 
   const getKid = (id: string) => {
     const k = s.kids.find((x) => x.id === id)
-    if (!k) throw new GameError('Cucciolo non trovato')
+    if (!k) throw new GameError('err.kidNotFound')
     return k
   }
   const pay = (n: number) => {
-    if (s.coins < n) throw new GameError(`Servono ${n} monete, ne avete ${s.coins}. Andate a lavorare! 💼`)
+    if (s.coins < n) throw new GameError('err.noMoney', { n, have: s.coins })
     s.coins -= n
   }
 
   switch (action.type) {
     case 'addKid': {
-      if (s.kids.length >= MAX_KIDS) throw new GameError('Casa piena! Massimo 5 cuccioli.')
+      if (s.kids.length >= MAX_KIDS) throw new GameError('err.houseFull')
       const name = cleanText(action.name, 16)
-      if (!name) throw new GameError('Dai un nome al cucciolo')
+      if (!name) throw new GameError('err.kidName')
       validLook(action)
       const traits = [...new Set((action.traits ?? []).filter((t) => TRAITS[t]))].slice(0, 2)
       const foods = FOODS.filter((f) => !f.onlyBaby)
@@ -393,8 +396,8 @@ export function applyAction(prev: FamilyState, playerId: string, action: Action,
         traits, outfit: {}, cooldowns: {}, favoriteFood: pick(foods, rng).id, careCount: 0,
       }
       s.kids.push(kid)
-      addLog(s, { at: now, who, kidId: kid.id, emoji: '🐣', text: `Benvenuto ${name}! ${me.name} ha accolto un nuovo cucciolo in famiglia.` }, rng)
-      result = { emoji: '🐣', text: `${name} è arrivato! Prendetevene cura insieme.`, data: kid.id }
+      addLog(s, { at: now, who, kidId: kid.id, emoji: '🐣', m: [msg('log.kidLog', { kid: name, p: me.name })] }, rng)
+      result = { emoji: '🐣', m: [msg('log.kidRes', { kid: name })], data: kid.id }
       if (s.nextEventAt > now + 10 * MIN) s.nextEventAt = now + 5 * MIN
       break
     }
@@ -407,53 +410,53 @@ export function applyAction(prev: FamilyState, playerId: string, action: Action,
 
     case 'work': {
       const job = JOBS.find((j) => j.id === action.jobId)
-      if (!job) throw new GameError('Lavoro sconosciuto')
+      if (!job) throw new GameError('err.unknown')
       const left = cooldownLeft(me.cooldowns, 'work', now)
-      if (left) throw new GameError(`Sei ancora al lavoro! Torni tra ${Math.ceil(left / MIN)} min.`)
+      if (left) throw new GameError('err.working', { n: Math.ceil(left / MIN) })
       const pay = between(job.min, job.max, rng)
       s.coins += pay
       me.cooldowns.work = now + job.minutes * MIN
       bump(s, 'works')
-      addLog(s, { at: now, who, emoji: job.emoji, text: `${me.name} ${job.text}: +${pay} 🪙` }, rng)
-      result = { emoji: job.emoji, text: `Ottimo lavoro! Hai guadagnato ${pay} monete.` }
+      addLog(s, { at: now, who, emoji: job.emoji, m: [msg('log.workLog', { p: me.name, jobText: job.id, n: pay })] }, rng)
+      result = { emoji: job.emoji, m: [msg('log.workRes', { n: pay })] }
       break
     }
 
     case 'minigame': {
       const left = cooldownLeft(me.cooldowns, 'minigame', now)
-      if (left) throw new GameError(`Riposa le dita! Puoi rigiocare tra ${Math.ceil(left / 1000)} s.`)
+      if (left) throw new GameError('err.rest', { n: Math.ceil(left / 1000) })
       const score = clamp(Math.round(Number(action.score) || 0), 0, 80)
       const coins = Math.round(score * 1.5)
       s.coins += coins
       me.cooldowns.minigame = now + MINIGAME_COOLDOWN
       s.counters.bestScore = Math.max(s.counters.bestScore ?? 0, score)
       for (const k of s.kids) if (!k.asleep) addStats(k, { felicita: Math.min(10, Math.round(score / 4)) })
-      addLog(s, { at: now, who, emoji: '🍪', text: `${me.name} ha acchiappato ${score} biscotti al volo: +${coins} 🪙` }, rng)
-      result = { emoji: '🍪', text: `${score} biscotti! +${coins} monete e cuccioli divertiti.` }
+      addLog(s, { at: now, who, emoji: '🍪', m: [msg('log.gameLog', { p: me.name, s: score, n: coins })] }, rng)
+      result = { emoji: '🍪', m: [msg('log.gameRes', { s: score, n: coins })] }
       break
     }
 
     case 'buy': {
       const item = itemById(action.itemId)
-      if (!item) throw new GameError('Articolo inesistente')
-      if (s.inventory.includes(item.id)) throw new GameError('Ce l\'avete già!')
+      if (!item) throw new GameError('err.unknown')
+      if (s.inventory.includes(item.id)) throw new GameError('err.owned')
       pay(item.price)
       s.inventory.push(item.id)
       bump(s, 'buys')
-      addLog(s, { at: now, who, emoji: '🛍️', text: `${me.name} ha comprato ${item.emoji} ${item.name} (−${item.price} 🪙)` }, rng)
-      result = { emoji: item.emoji, text: `${item.name} è nel guardaroba!` }
+      addLog(s, { at: now, who, emoji: '🛍️', m: [msg('log.buyLog', { p: me.name, item: item.id, n: item.price })] }, rng)
+      result = { emoji: item.emoji, m: [msg('log.buyRes', { itemName: item.id })] }
       break
     }
 
     case 'equip': {
       const target = action.target.type === 'kid' ? getKid(action.target.id) : s.parents.find((p) => p.id === action.target.id)
-      if (!target) throw new GameError('Personaggio non trovato')
-      if (!['top', 'hat', 'acc'].includes(action.slot)) throw new GameError('Slot non valido')
+      if (!target) throw new GameError('err.unknown')
+      if (!['top', 'hat', 'acc'].includes(action.slot)) throw new GameError('err.unknown')
       if (action.itemId === null) delete target.outfit[action.slot]
       else {
         const item = itemById(action.itemId)
-        if (!item || item.slot !== action.slot) throw new GameError('Capo non valido')
-        if (!s.inventory.includes(item.id)) throw new GameError('Prima compratelo in negozio!')
+        if (!item || item.slot !== action.slot) throw new GameError('err.unknown')
+        if (!s.inventory.includes(item.id)) throw new GameError('err.buyFirst')
         target.outfit[action.slot] = item.id
         if ('stats' in target && !target.asleep) addStats(target, { felicita: 2 })
       }
@@ -463,8 +466,8 @@ export function applyAction(prev: FamilyState, playerId: string, action: Action,
     case 'restyle': {
       validLook(action)
       const target = action.target.type === 'kid' ? getKid(action.target.id) : s.parents.find((p) => p.id === action.target.id)
-      if (!target) throw new GameError('Personaggio non trovato')
-      if (action.target.type === 'parent' && action.target.id !== who) throw new GameError('Puoi cambiare solo il tuo aspetto')
+      if (!target) throw new GameError('err.unknown')
+      if (action.target.type === 'parent' && action.target.id !== who) throw new GameError('err.onlyYou')
       target.species = action.species
       target.color = action.color
       target.pattern = action.pattern
@@ -473,82 +476,81 @@ export function applyAction(prev: FamilyState, playerId: string, action: Action,
 
     case 'vote': {
       const ev = s.events.find((e) => e.id === action.eventId)
-      if (!ev) throw new GameError('Questo imprevisto è già stato risolto')
+      if (!ev) throw new GameError('err.evGone')
       const tpl = eventById(ev.templateId)
-      if (!tpl?.options.some((o) => o.id === action.optionId)) throw new GameError('Scelta non valida')
+      if (!tpl?.options.some((o) => o.id === action.optionId)) throw new GameError('err.badChoice')
       ev.votes[who] = action.optionId
       const allVoted = s.parents.every((p) => ev.votes[p.id])
       if (allVoted) result = resolveEvent(s, ev, now, rng)
       else {
-        const opt = tpl.options.find((o) => o.id === action.optionId)!
-        addLog(s, { at: now, who, emoji: '🗳️', text: `${me.name} ha votato su "${tpl.title}". Manca il voto del partner!` }, rng)
-        result = { emoji: '🗳️', text: `Hai scelto ${opt.emoji} ${opt.label}. Ora tocca all'altro genitore!` }
+        addLog(s, { at: now, who, emoji: '🗳️', m: [msg('log.voteLog', { p: me.name, ev: tpl.id })] }, rng)
+        result = { emoji: '🗳️', m: [msg('log.voteRes', { ev: tpl.id, opt: action.optionId })] }
       }
       break
     }
 
     case 'note': {
       const text = cleanText(action.text, 160)
-      if (!text) throw new GameError('Il bigliettino è vuoto')
+      if (!text) throw new GameError('err.noteEmpty')
       const sticker = STICKERS.includes(action.sticker) ? action.sticker : '💌'
       s.notes.unshift({ id: uid(8, rng), at: now, who, text, sticker })
       if (s.notes.length > MAX_NOTES) s.notes.length = MAX_NOTES
       bump(s, 'notes')
       s.harmony = clamp(s.harmony + 1)
-      addLog(s, { at: now, who, emoji: sticker, text: `${me.name} ha lasciato un bigliettino in bacheca.` }, rng)
+      addLog(s, { at: now, who, emoji: sticker, m: [msg('log.noteLog', { p: me.name })] }, rng)
       break
     }
 
     case 'spin': {
       const left = cooldownLeft(s.cooldowns, 'spin', now)
-      if (left) throw new GameError(`La ruota si ricarica tra ${Math.ceil(left / HOUR)} ore.`)
+      if (left) throw new GameError('err.wheel', { n: Math.ceil(left / HOUR) })
       s.cooldowns.spin = now + SPIN_COOLDOWN
       bump(s, 'spins')
       const prize = weighted([...WHEEL], (w) => w.weight, rng)!
-      let text = ''
+      let m: Msg[] = []
       switch (prize.id) {
-        case 'c20': s.coins += 20; text = '20 monete!'; break
-        case 'c50': s.coins += 50; text = '50 monete!'; break
-        case 'c120': s.coins += 120; text = 'JACKPOT! 120 monete!'; break
+        case 'c20': s.coins += 20; m = [msg('spin.coins', { n: 20 })]; break
+        case 'c50': s.coins += 50; m = [msg('spin.coins', { n: 50 })]; break
+        case 'c120': s.coins += 120; m = [msg('spin.jackpot', { n: 120 })]; break
         case 'item': {
           const missing = ITEMS.filter((i) => !s.inventory.includes(i.id) && i.price > 0 && i.price <= 80)
           const it = missing.length ? pick(missing, rng) : undefined
-          text = it ? 'Un regalo per il guardaroba!' + giveItem(s, it.id, now, rng) : 'Avete già tutto! Ecco 60 monete.'
+          m = it ? [msg('spin.gift'), ...giveItem(s, it.id, now, rng)] : [msg('spin.all')]
           if (!it) s.coins += 60
           break
         }
-        case 'happy': for (const k of s.kids) addStats(k, { felicita: 25 }); text = 'Festa in casa! Tutti i cuccioli +25 felicità.'; break
-        case 'harmony': s.harmony = clamp(s.harmony + 10); text = 'Pioggia d\'amore: +10 armonia di coppia.'; break
-        case 'xp': for (const k of s.kids) addXp(s, k, 30, now, rng); text = 'Scatto di crescita: +30 punti crescita a tutti!'; break
-        default: text = 'Niente stavolta... domani andrà meglio!'
+        case 'happy': for (const k of s.kids) addStats(k, { felicita: 25 }); m = [msg('spin.happy')]; break
+        case 'harmony': s.harmony = clamp(s.harmony + 10); m = [msg('spin.harmony')]; break
+        case 'xp': for (const k of s.kids) addXp(s, k, 30, now, rng); m = [msg('spin.xp')]; break
+        default: m = [msg('spin.none')]
       }
-      addLog(s, { at: now, who, emoji: '🎡', text: `${me.name} ha girato la ruota: ${text}` }, rng)
-      result = { emoji: '🎡', text, data: prize.id }
+      addLog(s, { at: now, who, emoji: '🎡', m: [msg('log.spinLog', { p: me.name }), ...m] }, rng)
+      result = { emoji: '🎡', m, data: prize.id }
       break
     }
 
     case 'askEvent': {
-      if (!s.kids.length) throw new GameError('Prima serve almeno un cucciolo!')
-      if (s.events.length >= 2) throw new GameError('Risolvete prima gli imprevisti in sospeso!')
+      if (!s.kids.length) throw new GameError('err.needKid')
+      if (s.events.length >= 2) throw new GameError('err.resolveFirst')
       const left = cooldownLeft(s.cooldowns, 'askEvent', now)
-      if (left) throw new GameError(`Tutto tranquillo... riprova tra ${Math.ceil(left / MIN)} min.`)
+      if (left) throw new GameError('err.quiet', { n: Math.ceil(left / MIN) })
       s.cooldowns.askEvent = now + ASK_EVENT_COOLDOWN
       const ev = spawnEvent(s, now, rng)
-      if (!ev) throw new GameError('Per ora non succede niente. Riprova più tardi!')
-      result = { emoji: '🎲', text: 'È successo qualcosa!', data: ev.id }
+      if (!ev) throw new GameError('err.nothing')
+      result = { emoji: '🎲', m: [msg('log.askRes')], data: ev.id }
       break
     }
 
     case 'renameFamily': {
       const name = cleanText(action.name, 28)
-      if (!name) throw new GameError('Nome non valido')
+      if (!name) throw new GameError('err.badName')
       s.familyName = name
-      addLog(s, { at: now, who, emoji: '✏️', text: `${me.name} ha rinominato la famiglia in "${name}".` }, rng)
+      addLog(s, { at: now, who, emoji: '✏️', m: [msg('log.renameLog', { p: me.name, f: name })] }, rng)
       break
     }
 
     default:
-      throw new GameError('Azione sconosciuta')
+      throw new GameError('err.unknown')
   }
 
   checkAchievements(s, now, rng)
@@ -560,35 +562,35 @@ function care(s: FamilyState, me: Parent, kid: Kid, kind: CareKind, foodId: stri
   const t = (id: string) => kid.traits.includes(id)
   const cdKey = 'care:' + kind
   const left = cooldownLeft(kid.cooldowns, cdKey, now)
-  if (left) throw new GameError(`Aspetta ancora ${Math.ceil(left / MIN)} min.`)
-  if (kid.asleep && !['wake', 'cuddle', 'sing', 'medicine'].includes(kind))
-    throw new GameError(`${kid.name} sta dormendo! Svegliatelo prima (o fategli una coccola).`)
+  if (left) throw new GameError('err.wait', { n: Math.ceil(left / MIN) })
+  if (kid.asleep && !['wake', 'cuddle', 'sing', 'medicine'].includes(kind)) throw new GameError('err.asleep', { kid: kid.name })
   let xp = 5
   let emoji = '💛'
-  let text = ''
+  const m: Msg[] = []
+  const base = { p: me.name, kid: kid.name }
   const pay = (n: number) => {
-    if (s.coins < n) throw new GameError(`Servono ${n} monete, ne avete ${s.coins}.`)
+    if (s.coins < n) throw new GameError('err.noMoney', { n, have: s.coins })
     s.coins -= n
   }
 
   switch (kind) {
     case 'feed': {
       const food = foodById(foodId) ?? FOODS[1]
-      if (food.onlyBaby && kid.stage !== 'neonato') throw new GameError('Il biberon è solo per i neonati!')
-      if (food.notBaby && kid.stage === 'neonato') throw new GameError('Troppo presto per questo cibo! Prova latte o pappina.')
+      if (food.onlyBaby && kid.stage !== 'neonato') throw new GameError('err.bottleOnly')
+      if (food.notBaby && kid.stage === 'neonato') throw new GameError('err.tooEarlyFood')
       if (kid.stats.fame >= 95) {
         addStats(kid, { felicita: -3 })
-        return { emoji: '😝', text: `${kid.name} è pieno e fa una pernacchia. Niente cibo ora!` }
+        return { emoji: '😝', m: [msg('care.full', { kid: kid.name })] }
       }
       pay(food.cost)
       const fx = { ...food.effects }
       if (t('goloso')) fx.felicita = (fx.felicita ?? 0) + 6
       addStats(kid, fx)
       emoji = food.emoji
-      text = `${me.name} ha dato ${food.name.toLowerCase()} a ${kid.name}`
+      m.push(msg('care.feed', { ...base, food: food.id }))
       if (kid.favoriteFood === food.id) {
         addStats(kid, { felicita: 10 })
-        text += ' (il suo cibo preferito! 😍)'
+        m.push(msg('care.fav'))
         xp += 4
       }
       bump(s, 'feed')
@@ -596,35 +598,35 @@ function care(s: FamilyState, me: Parent, kid: Kid, kind: CareKind, foodId: stri
       break
     }
     case 'play': {
-      if (kid.stats.energia < 12) throw new GameError(`${kid.name} è troppo stanco per giocare. Nanna!`)
-      const games = ['a nascondino', 'con le costruzioni', 'a palla', 'al dottore', 'a rincorrersi', 'con la sabbia cinetica', 'a fare le bolle']
+      if (kid.stats.energia < 12) throw new GameError('err.tooTired', { kid: kid.name })
       addStats(kid, { felicita: t('vivace') ? 30 : 18, energia: -12, igiene: -8, fame: -5 })
       emoji = '🎈'
-      text = `${me.name} ha giocato ${pick(games, rng)} con ${kid.name}`
+      m.push(msg('care.play', { ...base, game: Math.floor(rng() * LIST_SIZE.game) }))
       xp = 10
       break
     }
     case 'bath': {
       addStats(kid, { igiene: 100, felicita: t('pulitino') ? 12 : 4 })
       emoji = '🛁'
-      text = `${me.name} ha fatto il bagnetto a ${kid.name} con tante bolle`
+      m.push(msg('care.bath', base))
       xp = 6
       break
     }
     case 'sleep': {
-      if (kid.asleep) throw new GameError('Sta già dormendo')
+      if (kid.asleep) throw new GameError('err.alreadyAsleep')
       kid.asleep = true
       emoji = '🌙'
-      text = `${me.name} ha messo ${kid.name} a nanna`
+      m.push(msg('care.sleep', base))
       xp = 2
       break
     }
     case 'wake': {
-      if (!kid.asleep) throw new GameError('È già sveglio!')
+      if (!kid.asleep) throw new GameError('err.alreadyAwake')
       kid.asleep = false
-      if (kid.stats.energia < 60) addStats(kid, { felicita: -6 })
+      const early = kid.stats.energia < 60
+      if (early) addStats(kid, { felicita: -6 })
       emoji = '⏰'
-      text = `${me.name} ha svegliato ${kid.name}${kid.stats.energia < 60 ? ' (un po\' troppo presto 😾)' : ''}`
+      m.push(msg(early ? 'care.wakeEarly' : 'care.wake', base))
       xp = 1
       break
     }
@@ -633,39 +635,37 @@ function care(s: FamilyState, me: Parent, kid: Kid, kind: CareKind, foodId: stri
       if (kid.sick) {
         kid.sick = false
         addStats(kid, { salute: 25, felicita: -5 })
-        text = `${me.name} ha dato lo sciroppo a ${kid.name}. Guarito!`
+        m.push(msg('care.medCure', base))
       } else {
         addStats(kid, { salute: 8 })
-        text = `${me.name} ha dato le vitamine a ${kid.name}`
+        m.push(msg('care.medVit', base))
       }
       emoji = '💊'
       xp = 4
       break
     }
     case 'study': {
-      if (kid.stage === 'neonato') throw new GameError('È ancora troppo piccolo per studiare!')
-      if (kid.stats.energia < 12) throw new GameError(`${kid.name} è troppo stanco per studiare.`)
+      if (kid.stage === 'neonato') throw new GameError('err.tooSmall')
+      if (kid.stats.energia < 12) throw new GameError('err.tooTiredStudy', { kid: kid.name })
       const gain = t('secchione') ? 10 : 5
       kid.smarts = clamp(kid.smarts + gain)
       addStats(kid, { felicita: t('secchione') ? 2 : -4, energia: -8 })
-      const subj = ['le tabelline', 'la geografia', 'l\'inglese', 'le scienze', 'la storia dei dinosauri', 'a leggere', 'il coding']
       emoji = '📚'
-      text = `${me.name} ha studiato ${pick(subj, rng)} con ${kid.name} (+${gain} 🧠)`
+      m.push(msg('care.study', { ...base, subj: Math.floor(rng() * LIST_SIZE.subj), n: gain }))
       xp = 12
       break
     }
     case 'cuddle': {
       addStats(kid, { felicita: t('coccolone') || t('timido') ? 18 : 10 })
       emoji = '🤗'
-      text = kid.asleep ? `${me.name} ha dato un bacino sulla fronte a ${kid.name} che dorme` : `${me.name} ha coccolato ${kid.name}`
+      m.push(msg(kid.asleep ? 'care.cuddleSleep' : 'care.cuddle', base))
       xp = 4
       break
     }
     case 'sing': {
       addStats(kid, { felicita: t('artista') ? 16 : 8, energia: kid.asleep ? 5 : 2 })
-      const songs = ['una ninna nanna', 'la canzone del coccodrillo', 'una canzone inventata', 'la sigla dei cartoni', 'una canzone in dialetto']
       emoji = '🎶'
-      text = `${me.name} ha cantato ${pick(songs, rng)} a ${kid.name}`
+      m.push(msg('care.sing', { ...base, song: Math.floor(rng() * LIST_SIZE.song) }))
       xp = 5
       break
     }
@@ -675,8 +675,8 @@ function care(s: FamilyState, me: Parent, kid: Kid, kind: CareKind, foodId: stri
   kid.careCount++
   bump(s, 'care')
   addXp(s, kid, xp, now, rng)
-  addLog(s, { at: now, who: me.id, kidId: kid.id, emoji, text: text + '.' }, rng)
-  return { emoji, text: text + '!' }
+  addLog(s, { at: now, who: me.id, kidId: kid.id, emoji, m }, rng)
+  return { emoji, m }
 }
 
 export { EVENTS }
